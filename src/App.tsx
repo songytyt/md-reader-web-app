@@ -26,10 +26,11 @@ export default function App() {
   const [selectedColor, setSelectedColor] = useState<HighlightColor>('yellow')
   const [armed, setArmed] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [outlineOpen, setOutlineOpen] = useState(false)
+  const [outlineOpen, setOutlineOpen] = useState(true)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [message, setMessage] = useState('Open a Markdown file or begin with this sample.')
   const readerRef = useRef<HTMLElement>(null)
+  const highlightControlRef = useRef<HTMLDivElement>(null)
 
   const outline = useMemo(() => outlineFromMarkdown(source), [source])
   const dirty = withMetadata(source, annotations) !== savedSnapshot
@@ -147,6 +148,14 @@ export default function App() {
   })
 
   useEffect(() => {
+    const closePalette = (event: MouseEvent) => {
+      if (highlightControlRef.current && !highlightControlRef.current.contains(event.target as Node)) setPaletteOpen(false)
+    }
+    document.addEventListener('mousedown', closePalette)
+    return () => document.removeEventListener('mousedown', closePalette)
+  }, [])
+
+  useEffect(() => {
     const onPointerUp = () => {
       // Browsers finalize a text range after pointer-up. Waiting one frame avoids
       // reading the stale, pre-selection range that made highlights intermittent.
@@ -163,25 +172,32 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="toolbar">
-      <div className="tool-group">
+      <div className="tool-group toolbar-capsule toolbar-start">
         <button className="icon-button" onClick={() => setOutlineOpen(!outlineOpen)} aria-label="Toggle table of contents" title="Table of contents">☷</button>
-        <button className="text-button" onClick={() => void openFile()}>Open</button>
+        <button className="icon-button" onClick={() => void openFile()} aria-label="Upload Markdown file" title="Upload Markdown file">
+          <svg className="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0 4 4m-4-4-4 4M5 14v5h14v-5" /></svg>
+        </button>
         <button className="icon-button" onClick={() => void refresh()} aria-label="Reload file" title="Reload file">↻</button>
       </div>
       <div className="document-name"><span>{fileName}</span><small>{savedLabel}</small></div>
       <div className="tool-group right-tools">
-        <div className="highlight-control">
-          <button className={`highlight-button ${armed ? 'armed' : ''}`} onClick={() => { setArmed(!armed); setPaletteOpen(true) }} aria-pressed={armed}>Highlight <i className={`swatch ${selectedColor}`} /></button>
+        <div ref={highlightControlRef} className="highlight-control toolbar-capsule">
+          <button className={`highlight-button ${armed ? 'armed' : ''}`} onClick={() => setArmed(!armed)} aria-pressed={armed}>Highlight</button>
+          <button className="color-trigger" onClick={() => setPaletteOpen(!paletteOpen)} aria-label={`Choose highlight color; currently ${colors.find((item) => item.value === selectedColor)?.label}`} aria-expanded={paletteOpen}>
+            <i className={`swatch ${selectedColor}`} />
+          </button>
           {paletteOpen && <div className="palette" role="menu" aria-label="Highlight colors">
-            {colors.map((color) => <button key={color.value} className={color.value} onClick={() => { setSelectedColor(color.value); setArmed(true); setPaletteOpen(false) }} title={color.label}><i className={`swatch ${color.value}`} /><span>{color.label}</span></button>)}
+            {colors.map((color) => <button key={color.value} className={color.value} onClick={() => { setSelectedColor(color.value); setPaletteOpen(false) }} title={color.label}><i className={`swatch ${color.value}`} /><span>{color.label}</span></button>)}
           </div>}
         </div>
-        <button className="text-button save-button" onClick={() => void save()}>Save</button>
+        <div className="toolbar-capsule save-capsule">
+          <button className="text-button save-button" onClick={() => void save()} aria-label="Save file" title="Save file">Save</button>
+        </div>
       </div>
     </header>
 
     <div className="status-line" aria-live="polite">{armed ? `Highlight mode on · ${colors.find((item) => item.value === selectedColor)?.label} selected` : message}</div>
-    <div className="reader-layout">
+    <div className={`reader-layout ${outlineOpen ? 'contents-open' : ''}`}>
       <aside className={`outline ${outlineOpen ? 'visible' : ''}`} aria-label="Table of contents">
         <div className="outline-heading"><span>Contents</span><button onClick={() => setOutlineOpen(false)} aria-label="Close contents">×</button></div>
         {outline.length ? outline.map((item) => <button key={item.id} className={`outline-item level-${item.level}`} onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{item.title}</button>) : <p>No headings found.</p>}
