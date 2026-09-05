@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
-import { SAMPLE_MARKDOWN, annotationsForText, highlightCode, markText, outlineFromMarkdown, splitMetadata, withMetadata } from './markdown'
+import { SAMPLE_MARKDOWN, annotationsForText, highlightCode, indexOfTextOnLine, markText, outlineFromMarkdown, splitMetadata, withMetadata } from './markdown'
 import type { CodeAnnotation, FileSystemFileHandleLike, HighlightColor } from './types'
 
 const colors: Array<{ value: HighlightColor; label: string }> = [
@@ -94,7 +94,7 @@ export default function App() {
     if (!selection?.rangeCount || selection.isCollapsed) return
     const range = selection.getRangeAt(0)
     const walker = document.createTreeWalker(readerRef.current ?? document.body, NodeFilter.SHOW_TEXT)
-    const textParts: Array<{ text: string; code: HTMLElement | null }> = []
+    const textParts: Array<{ text: string; code: HTMLElement | null; sourceLine: number | null; highlighted: boolean }> = []
     let node: Node | null
     while ((node = walker.nextNode())) {
       if (!range.intersectsNode(node)) continue
@@ -102,7 +102,13 @@ export default function App() {
       const start = node === range.startContainer ? range.startOffset : 0
       const end = node === range.endContainer ? range.endOffset : raw.length
       const text = raw.slice(start, end)
-      if (text) textParts.push({ text, code: node.parentElement?.closest('code') ?? null })
+      const sourceLine = Number(node.parentElement?.closest<HTMLElement>('[data-source-line]')?.dataset.sourceLine) || null
+      if (text) textParts.push({
+        text,
+        code: node.parentElement?.closest('code') ?? null,
+        sourceLine,
+        highlighted: Boolean(node.parentElement?.closest('mark[data-md-reader-color]')),
+      })
     }
     if (!textParts.some((part) => part.text.trim())) return
 
@@ -110,7 +116,8 @@ export default function App() {
     let nextSource = source
     let cursor = 0
     for (const part of proseParts) {
-      const index = nextSource.indexOf(part.text, cursor)
+      if (part.highlighted) continue
+      const index = part.sourceLine ? indexOfTextOnLine(nextSource, part.sourceLine, part.text) : nextSource.indexOf(part.text, cursor)
       if (index < 0) continue
       const openMark = `<mark data-md-reader-color="${selectedColor}">`
       nextSource = `${nextSource.slice(0, index)}${openMark}${part.text}</mark>${nextSource.slice(index + part.text.length)}`
@@ -205,12 +212,12 @@ export default function App() {
       <section ref={readerRef} className="reader">
         <article className="paper">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]} components={{
-            h1: ({ children, node }) => <h1 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h1>,
-            h2: ({ children, node }) => <h2 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h2>,
-            h3: ({ children, node }) => <h3 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h3>,
-            h4: ({ children, node }) => <h4 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h4>,
-            h5: ({ children, node }) => <h5 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h5>,
-            h6: ({ children, node }) => <h6 id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h6>,
+            h1: ({ children, node }) => <h1 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h1>,
+            h2: ({ children, node }) => <h2 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h2>,
+            h3: ({ children, node }) => <h3 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h3>,
+            h4: ({ children, node }) => <h4 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h4>,
+            h5: ({ children, node }) => <h5 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h5>,
+            h6: ({ children, node }) => <h6 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h6>,
             code: ({ children, className }) => {
               const content = String(children).replace(/\n$/, '')
               const pieces = highlightCode(content, annotationsForText(annotations, content))

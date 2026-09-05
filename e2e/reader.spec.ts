@@ -35,6 +35,58 @@ test('opens, highlights, saves, and refreshes a local Markdown document', async 
   await expect(page.locator('mark')).toHaveCount(1)
 })
 
+test('highlights repeated heading text in the selected heading', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  await page.getByRole('heading', { name: 'Notes worth keeping' }).evaluate((heading) => {
+    const text = heading.firstChild!
+    const start = text.textContent!.indexOf('ee')
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, start)
+    range.setEnd(text, start + 2)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(page.getByRole('heading', { name: 'Notes worth keeping' }).locator('mark')).toHaveText('ee')
+  await expect(page.locator('p mark')).toHaveCount(0)
+})
+
+test('does not nest highlight tags when a later selection overlaps a heading highlight', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  const heading = page.getByRole('heading', { name: 'The quiet work of reading' })
+  await heading.evaluate((element) => {
+    const text = element.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 'The '.length)
+    range.setEnd(text, 'The quiet'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(heading.locator('mark')).toHaveText('quiet')
+
+  await heading.evaluate((element) => {
+    const highlighted = element.querySelector('mark')!.firstChild!
+    const trailingText = element.lastChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(highlighted, 3)
+    range.setEnd(trailingText, ' work'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(heading.locator('mark')).toHaveText(['quiet', ' work'])
+  await expect(heading.locator('mark mark')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'The quiet work of reading' })).toBeVisible()
+})
+
 test('refresh confirms before discarding an unsaved annotation', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Upload Markdown file').click()

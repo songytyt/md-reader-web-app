@@ -79,6 +79,17 @@ describe('Reader controls', () => {
     expect(screen.getByText(/Saved \d/)).toBeInTheDocument()
   })
 
+  it('shows highlighted heading text without HTML tags in the contents list', async () => {
+    const user = userEvent.setup()
+    const { handle } = makeHandle('# <mark data-md-reader-color="yellow">Imported</mark> title\n\nBody')
+    window.showOpenFilePicker = vi.fn().mockResolvedValue([handle])
+    render(<App />)
+
+    await user.click(screen.getByLabelText('Upload Markdown file'))
+    expect(await screen.findByRole('button', { name: 'Imported title' })).toBeInTheDocument()
+    expect(screen.queryByText(/<mark/)).not.toBeInTheDocument()
+  })
+
   it('explains that a local file must be opened before direct save is available', async () => {
     const user = userEvent.setup()
     render(<App />)

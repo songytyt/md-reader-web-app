@@ -27,7 +27,11 @@ export function outlineFromMarkdown(markdown: string): OutlineItem[] {
   return markdown.split('\n').flatMap((line, lineIndex) => {
     const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line)
     if (!match) return []
-    const title = match[2].replace(/[`*_~]/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim()
+    const title = match[2]
+      .replace(/<\/?[a-z][^>]*>/gi, '')
+      .replace(/[`*_~]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .trim()
     const base = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-') || 'section'
     const count = seen.get(base) ?? 0
     seen.set(base, count + 1)
@@ -43,6 +47,19 @@ export function markText(source: string, selection: string, color: HighlightColo
   const before = source.slice(0, index)
   const after = source.slice(index + needle.length)
   return `${before}<mark data-md-reader-color="${color}">${needle}</mark>${after}`
+}
+
+export function indexOfTextOnLine(source: string, lineNumber: number, text: string): number {
+  if (lineNumber < 1) return -1
+  let start = 0
+  for (let line = 1; line < lineNumber; line += 1) {
+    const newline = source.indexOf('\n', start)
+    if (newline === -1) return -1
+    start = newline + 1
+  }
+  const end = source.indexOf('\n', start)
+  const index = source.slice(start, end === -1 ? source.length : end).indexOf(text)
+  return index === -1 ? -1 : start + index
 }
 
 export function annotationsForText(annotations: CodeAnnotation[], content: string) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { annotationsForText, highlightCode, markText, outlineFromMarkdown, splitMetadata, withMetadata } from './markdown'
+import { annotationsForText, highlightCode, indexOfTextOnLine, markText, outlineFromMarkdown, splitMetadata, withMetadata } from './markdown'
 
 describe('Markdown persistence helpers', () => {
   it('creates an ordered outline with stable duplicate IDs', () => {
@@ -8,6 +8,12 @@ describe('Markdown persistence helpers', () => {
       { level: 2, title: 'Detail', id: 'detail', sourceLine: 2 },
       { level: 2, title: 'Detail', id: 'detail-1', sourceLine: 3 },
       { level: 6, title: 'End', id: 'end', sourceLine: 4 },
+    ])
+  })
+
+  it('uses visible heading text when a heading includes a highlight mark', () => {
+    expect(outlineFromMarkdown('# <mark data-md-reader-color="yellow">Important</mark> chapter')).toEqual([
+      { level: 1, title: 'Important chapter', id: 'important-chapter', sourceLine: 1 },
     ])
   })
 
@@ -28,6 +34,11 @@ describe('Markdown persistence helpers', () => {
   it('wraps selected prose with a persisted color mark', () => {
     expect(markText('Read this now.', 'this', 'pink')).toBe('Read <mark data-md-reader-color="pink">this</mark> now.')
     expect(markText('Read this.', 'missing', 'yellow')).toBeNull()
+  })
+
+  it('finds selected text on its source line instead of an earlier duplicate', () => {
+    const source = '# First\n\nThis small reader keeps the document at the center.\n\n## Notes worth keeping'
+    expect(indexOfTextOnLine(source, 5, 'ee')).toBe(source.lastIndexOf('ee'))
   })
 
   it('returns annotations for the matching code node and renders their pieces', () => {
