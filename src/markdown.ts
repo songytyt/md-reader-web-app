@@ -42,14 +42,19 @@ export function outlineFromMarkdown(markdown: string): OutlineItem[] {
 export function markText(source: string, selection: string, color: HighlightColor): string | null {
   const needle = selection.replace(/\u00a0/g, ' ')
   if (!needle.trim()) return null
-  const index = source.indexOf(needle)
+  let index = source.indexOf(needle)
+  while (index >= 0 && isInsideHighlight(source, index)) index = source.indexOf(needle, index + needle.length)
   if (index < 0) return null
   const before = source.slice(0, index)
   const after = source.slice(index + needle.length)
   return `${before}<mark data-md-reader-color="${color}">${needle}</mark>${after}`
 }
 
-export function indexOfTextOnLine(source: string, lineNumber: number, text: string): number {
+function isInsideHighlight(source: string, index: number) {
+  return source.lastIndexOf('<mark', index) > source.lastIndexOf('</mark>', index)
+}
+
+export function indexOfTextOnLine(source: string, lineNumber: number, text: string, fromIndex = 0): number {
   if (lineNumber < 1) return -1
   let start = 0
   for (let line = 1; line < lineNumber; line += 1) {
@@ -58,8 +63,18 @@ export function indexOfTextOnLine(source: string, lineNumber: number, text: stri
     start = newline + 1
   }
   const end = source.indexOf('\n', start)
-  const index = source.slice(start, end === -1 ? source.length : end).indexOf(text)
-  return index === -1 ? -1 : start + index
+  const searchStart = Math.max(start, fromIndex)
+  const lineEnd = end === -1 ? source.length : end
+  let index = source.indexOf(text, searchStart)
+  while (index >= 0 && index < lineEnd) {
+    if (!isInsideHtmlTag(source, index) && !isInsideHtmlTag(source, index + text.length - 1)) return index
+    index = source.indexOf(text, index + text.length)
+  }
+  return -1
+}
+
+function isInsideHtmlTag(source: string, index: number) {
+  return source.lastIndexOf('<', index) > source.lastIndexOf('>', index)
 }
 
 export function annotationsForText(annotations: CodeAnnotation[], content: string) {

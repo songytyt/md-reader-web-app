@@ -94,7 +94,7 @@ export default function App() {
     if (!selection?.rangeCount || selection.isCollapsed) return
     const range = selection.getRangeAt(0)
     const walker = document.createTreeWalker(readerRef.current ?? document.body, NodeFilter.SHOW_TEXT)
-    const textParts: Array<{ text: string; code: HTMLElement | null; sourceLine: number | null; highlighted: boolean }> = []
+    const textParts: Array<{ text: string; code: HTMLElement | null; sourceLine: number | null; sourceOffset: number; highlighted: boolean }> = []
     let node: Node | null
     while ((node = walker.nextNode())) {
       if (!range.intersectsNode(node)) continue
@@ -102,11 +102,13 @@ export default function App() {
       const start = node === range.startContainer ? range.startOffset : 0
       const end = node === range.endContainer ? range.endOffset : raw.length
       const text = raw.slice(start, end)
-      const sourceLine = Number(node.parentElement?.closest<HTMLElement>('[data-source-line]')?.dataset.sourceLine) || null
+      const sourceBlock = node.parentElement?.closest<HTMLElement>('[data-source-line]')
+      const sourceLine = Number(sourceBlock?.dataset.sourceLine) || null
       if (text) textParts.push({
         text,
         code: node.parentElement?.closest('code') ?? null,
         sourceLine,
+        sourceOffset: sourceBlock ? visibleOffsetInBlock(sourceBlock, node, start) : 0,
         highlighted: Boolean(node.parentElement?.closest('mark[data-md-reader-color]')),
       })
     }
@@ -116,14 +118,15 @@ export default function App() {
     let nextSource = source
     let cursor = 0
     for (const part of proseParts) {
-      if (part.highlighted) continue
-      const index = part.sourceLine ? indexOfTextOnLine(nextSource, part.sourceLine, part.text) : nextSource.indexOf(part.text, cursor)
+      const index = part.sourceLine ? indexOfTextOnLine(nextSource, part.sourceLine, part.text, Math.max(cursor, sourceIndexAtVisibleOffset(nextSource, part.sourceLine, part.sourceOffset))) : nextSource.indexOf(part.text, cursor)
       if (index < 0) continue
+      cursor = index + part.text.length
+      if (part.highlighted) continue
       const openMark = `<mark data-md-reader-color="${selectedColor}">`
       nextSource = `${nextSource.slice(0, index)}${openMark}${part.text}</mark>${nextSource.slice(index + part.text.length)}`
       cursor = index + openMark.length + part.text.length + '</mark>'.length
     }
-    if (nextSource === source) {
+    if (nextSource === source && !proseParts.some((part) => part.highlighted)) {
       const fallback = markText(source, selection.toString(), selectedColor)
       if (fallback) nextSource = fallback
     }
@@ -138,7 +141,9 @@ export default function App() {
             const start = content.indexOf(part.text)
             return start < 0 ? [] : [{ content, start, end: start + part.text.length, color: selectedColor }]
           })
-          return [...current, ...additions]
+          return [...current, ...additions.filter((addition) => !current.some((annotation) =>
+            annotation.content === addition.content && annotation.start === addition.start && annotation.end === addition.end,
+          ))]
         })
       }
     })
@@ -216,9 +221,12 @@ export default function App() {
             h2: ({ children, node }) => <h2 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h2>,
             h3: ({ children, node }) => <h3 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h3>,
             h4: ({ children, node }) => <h4 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h4>,
-            h5: ({ children, node }) => <h5 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h5>,
-            h6: ({ children, node }) => <h6 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h6>,
-            code: ({ children, className }) => {
+          h5: ({ children, node }) => <h5 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h5>,
+          h6: ({ children, node }) => <h6 data-source-line={node?.position?.start.line} id={outline.find((item) => item.sourceLine === node?.position?.start.line)?.id}>{children}</h6>,
+          p: ({ children, node }) => <p data-source-line={node?.position?.start.line}>{children}</p>,
+          li: ({ children, node }) => <li data-source-line={node?.position?.start.line}>{children}</li>,
+          tr: ({ children, node }) => <tr data-source-line={node?.position?.start.line}>{children}</tr>,
+          code: ({ children, className }) => {
               const content = String(children).replace(/\n$/, '')
               const pieces = highlightCode(content, annotationsForText(annotations, content))
               return <code className={className}>{Array.isArray(pieces) ? pieces.map((piece, index) => typeof piece === 'string' ? piece : <mark key={index} data-md-reader-color={piece.color}>{piece.value}</mark>) : pieces}</code>
@@ -228,4 +236,41 @@ export default function App() {
       </section>
     </div>
   </main>
+}
+
+function visibleOffsetInBlock(block: HTMLElement, target: Node, selectionStart: number) {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let offset = 0
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    if (node === target) return offset + selectionStart
+    offset += node.textContent?.length ?? 0
+  }
+  return 0
+}
+
+function sourceIndexAtVisibleOffset(source: string, lineNumber: number, visibleOffset: number) {
+  let start = 0
+  for (let line = 1; line < lineNumber; line += 1) {
+    const newline = source.indexOf('\n', start)
+    if (newline === -1) return 0
+    start = newline + 1
+  }
+  const end = source.indexOf('\n', start)
+  const lineEnd = end === -1 ? source.length : end
+  let visibleCharacters = 0
+  let index = start
+  while (index < lineEnd) {
+    if (source[index] === '<') {
+      const tagEnd = source.indexOf('>', index)
+      if (tagEnd !== -1 && tagEnd < lineEnd) {
+        index = tagEnd + 1
+        continue
+      }
+    }
+    if (visibleCharacters === visibleOffset) return index
+    visibleCharacters += 1
+    index += 1
+  }
+  return lineEnd
 }
