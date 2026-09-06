@@ -31,6 +31,15 @@ describe('Markdown persistence helpers', () => {
     expect(splitMetadata(source)).toEqual({ markdown: source, annotations: [] })
   })
 
+  it('restores legacy HTML marks in fenced code blocks as code annotations', () => {
+    const source = "```ts\nconst thought = 'A good page makes room fo<mark data-md-reader-color=\"yellow\">r</mark> thought.'\n```\n"
+
+    expect(splitMetadata(source)).toEqual({
+      markdown: "```ts\nconst thought = 'A good page makes room for thought.'\n```\n",
+      annotations: [{ content: "const thought = 'A good page makes room for thought.'", start: 42, end: 43, color: 'yellow' }],
+    })
+  })
+
   it('wraps selected prose with a persisted color mark', () => {
     expect(markText('Read this now.', 'this', 'pink')).toBe('Read <mark data-md-reader-color="pink">this</mark> now.')
     expect(markText('Read this.', 'missing', 'yellow')).toBeNull()

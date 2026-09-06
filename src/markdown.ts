@@ -2,18 +2,49 @@ import type { CodeAnnotation, HighlightColor, OutlineItem } from './types'
 
 const META_START = '<!-- paper-reader-code-highlights:'
 const META_END = '-->'
+const LEGACY_CODE_MARK = /<mark data-md-reader-color="(yellow|pink|blue|green|purple)">([\s\S]*?)<\/mark>/g
+
+function restoreLegacyCodeHighlights(markdown: string) {
+  const annotations: CodeAnnotation[] = []
+  const normalized = markdown.replace(/(```[^\n]*\n)([\s\S]*?)(\n```(?=\n|$))/g, (block, opening, code, closing) => {
+    if (!LEGACY_CODE_MARK.test(code)) return block
+    LEGACY_CODE_MARK.lastIndex = 0
+    let plainCode = ''
+    let cursor = 0
+    const blockAnnotations: Array<Omit<CodeAnnotation, 'content'>> = []
+    for (const match of code.matchAll(LEGACY_CODE_MARK)) {
+      const matchStart = match.index ?? 0
+      plainCode += code.slice(cursor, matchStart)
+      const value = match[2]
+      const start = plainCode.length
+      plainCode += value
+      blockAnnotations.push({
+        start,
+        end: start + value.length,
+        color: match[1] as HighlightColor,
+      })
+      cursor = matchStart + match[0].length
+    }
+    plainCode += code.slice(cursor)
+    const content = plainCode.endsWith('\n') ? plainCode.slice(0, -1) : plainCode
+    annotations.push(...blockAnnotations.map((annotation) => ({ ...annotation, content })))
+    return `${opening}${plainCode}${closing}`
+  })
+  return { markdown: normalized, annotations }
+}
 
 export function splitMetadata(source: string): { markdown: string; annotations: CodeAnnotation[] } {
   const start = source.lastIndexOf(META_START)
-  if (start === -1) return { markdown: source, annotations: [] }
+  if (start === -1) return restoreLegacyCodeHighlights(source)
   const end = source.indexOf(META_END, start)
-  if (end === -1) return { markdown: source, annotations: [] }
+  if (end === -1) return restoreLegacyCodeHighlights(source)
   try {
     const annotations = JSON.parse(source.slice(start + META_START.length, end).trim()) as CodeAnnotation[]
     if (!Array.isArray(annotations)) throw new Error('Invalid metadata')
-    return { markdown: source.slice(0, start).trimEnd() + '\n', annotations }
+    const restored = restoreLegacyCodeHighlights(source.slice(0, start).trimEnd() + '\n')
+    return { markdown: restored.markdown, annotations: [...annotations, ...restored.annotations] }
   } catch {
-    return { markdown: source, annotations: [] }
+    return restoreLegacyCodeHighlights(source)
   }
 }
 

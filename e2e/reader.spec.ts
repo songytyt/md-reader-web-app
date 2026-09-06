@@ -35,6 +35,24 @@ test('opens, highlights, saves, and refreshes a local Markdown document', async 
   await expect(page.locator('mark')).toHaveCount(1)
 })
 
+test('repairs legacy HTML marks in a code block when the document opens', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const source = "```ts\nconst thought = 'A good page makes room fo<mark data-md-reader-color=\"yellow\">r</mark> thought.'\n```\n"
+    window.showOpenFilePicker = async () => [{
+      name: 'legacy-code.md',
+      getFile: async () => new File([source], 'legacy-code.md', { type: 'text/markdown' }),
+      createWritable: async () => ({ write: async () => undefined, close: async () => undefined }),
+    }]
+  })
+
+  await page.getByLabel('Upload Markdown file').click()
+  await expect(page.getByText('legacy-code.md', { exact: true })).toBeVisible()
+  const code = page.locator('pre code')
+  await expect(code).toHaveText("const thought = 'A good page makes room for thought.'")
+  await expect(code.locator('mark')).toHaveText('r')
+})
+
 test('highlights repeated heading text in the selected heading', async ({ page }) => {
   await page.goto('/')
   await page.getByText('Highlight', { exact: true }).click()
