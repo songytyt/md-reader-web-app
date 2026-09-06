@@ -87,6 +87,185 @@ test('does not nest highlight tags when a later selection overlaps a heading hig
   await expect(page.getByRole('button', { name: 'The quiet work of reading' })).toBeVisible()
 })
 
+test('does not add another mark when the same highlighted phrase is selected again', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  const paragraph = page.locator('p').first()
+
+  await paragraph.evaluate((element) => {
+    const text = element.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 'Markdown is'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(paragraph.locator('mark')).toHaveText('Markdown is')
+
+  await paragraph.evaluate((element) => {
+    const text = element.querySelector('mark')!.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(paragraph.locator('mark')).toHaveCount(1)
+  await expect(paragraph).toHaveText('Markdown is a wonderfully portable format, but it deserves a calm place to be read. This small reader keeps the document at the center and the controls close at hand.')
+})
+
+test('does not highlight a later duplicate when an existing highlight is selected again', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  const paragraph = page.locator('p').first()
+
+  await paragraph.evaluate((element) => {
+    const text = element.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 'Markdown'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(paragraph.locator('mark')).toHaveText('Markdown')
+
+  await paragraph.evaluate((element) => {
+    const text = element.querySelector('mark')!.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(page.locator('mark')).toHaveCount(1)
+  await expect(page.getByRole('cell', { name: 'Keeps five colors in the Markdown' }).locator('mark')).toHaveCount(0)
+})
+
+test('keeps a word intact when separately highlighting adjacent fragments', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  const paragraph = page.locator('p').first()
+
+  await paragraph.evaluate((element) => {
+    const text = element.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 'Markdown is a w'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(paragraph.locator('mark')).toHaveText('Markdown is a w')
+
+  await paragraph.evaluate((element) => {
+    const text = element.childNodes[1]!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 1)
+    range.setEnd(text, 1 + 'nderfully'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(paragraph.locator('mark')).toHaveText(['Markdown is a w', 'nderfully'])
+
+  await paragraph.evaluate((element) => {
+    const text = element.childNodes[1]!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(paragraph.locator('mark')).toHaveText(['Markdown is a w', 'o', 'nderfully'])
+  await expect(paragraph.locator('mark mark')).toHaveCount(0)
+  await expect(paragraph.locator(':scope > mark')).toHaveCount(3)
+  await expect(paragraph.locator(':scope > mark').nth(1)).toHaveCSS('padding-left', '0px')
+  await expect(paragraph.locator(':scope > mark').nth(1)).toHaveCSS('padding-right', '0px')
+  await expect(paragraph).toHaveText('Markdown is a wonderfully portable format, but it deserves a calm place to be read. This small reader keeps the document at the center and the controls close at hand.')
+})
+
+test('highlights the remaining letter when extending an existing table highlight', async ({ page }) => {
+  await page.goto('/')
+  await page.getByText('Highlight', { exact: true }).click()
+  const cell = page.getByRole('cell', { name: 'Keeps five colors in the Markdown' })
+
+  await cell.evaluate((element) => {
+    const text = element.firstChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 'Keep'.length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+  await expect(cell.locator('mark')).toHaveText('Keep')
+
+  await cell.evaluate((element) => {
+    const highlighted = element.querySelector('mark')!.firstChild!
+    const trailingText = element.lastChild!
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(highlighted, 0)
+    range.setEnd(trailingText, 1)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+  })
+
+  await expect(cell.locator('mark')).toHaveText(['Keep', 's'])
+  await expect(page.getByText('Markdown is a wonderfully portable format, but it deserves a calm place to be read. This small reader keeps the document at the center and the controls close at hand.').locator('mark')).toHaveCount(0)
+})
+
+test('anchors repeated selections to the correct Markdown content block', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const source = '# keep and keep\n\nkeep and keep\n\n- keep and keep\n\n> keep and keep\n\n| Label | Value |\n| --- | --- |\n| Item | keep and keep |\n'
+    window.showOpenFilePicker = async () => [{
+      name: 'repeated.md',
+      getFile: async () => new File([source], 'repeated.md', { type: 'text/markdown' }),
+      createWritable: async () => ({ write: async () => undefined, close: async () => undefined }),
+    }]
+  })
+  await page.getByLabel('Upload Markdown file').click()
+  await page.getByText('Highlight', { exact: true }).click()
+
+  const targets = [
+    page.getByRole('heading', { name: 'keep and keep' }),
+    page.locator('p').first(),
+    page.locator('li'),
+    page.locator('blockquote p'),
+    page.getByRole('cell', { name: 'keep and keep' }),
+  ]
+  for (const target of targets) {
+    await target.evaluate((element) => {
+      const text = element.firstChild!
+      const value = text.textContent!
+      const selection = window.getSelection()!
+      const range = document.createRange()
+      const start = value.lastIndexOf('keep')
+      range.setStart(text, start)
+      range.setEnd(text, start + 'keep'.length)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+    })
+    await expect(target.locator('mark')).toHaveText('keep')
+  }
+})
+
 test('refresh confirms before discarding an unsaved annotation', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Upload Markdown file').click()

@@ -36,9 +36,40 @@ describe('Markdown persistence helpers', () => {
     expect(markText('Read this.', 'missing', 'yellow')).toBeNull()
   })
 
+  it('does not wrap an already highlighted selection again', () => {
+    const source = 'Read <mark data-md-reader-color="pink">this</mark> now.'
+
+    expect(markText(source, 'this', 'yellow')).toBeNull()
+  })
+
+  it('marks an unhighlighted duplicate when an earlier duplicate is already highlighted', () => {
+    const source = '<mark data-md-reader-color="pink">this</mark> and this'
+
+    expect(markText(source, 'this', 'yellow')).toBe('<mark data-md-reader-color="pink">this</mark> and <mark data-md-reader-color="yellow">this</mark>')
+  })
+
   it('finds selected text on its source line instead of an earlier duplicate', () => {
     const source = '# First\n\nThis small reader keeps the document at the center.\n\n## Notes worth keeping'
     expect(indexOfTextOnLine(source, 5, 'ee')).toBe(source.lastIndexOf('ee'))
+  })
+
+  it('finds text after an already-mapped selection on the same source line', () => {
+    const source = '| Highlights | <mark data-md-reader-color="yellow">Keep</mark>s five colors |'
+    const highlighted = source.indexOf('Keep')
+
+    expect(indexOfTextOnLine(source, 1, 's', highlighted + 'Keep'.length)).toBe(source.indexOf('s five'))
+  })
+
+  it('uses a visible offset to select the later duplicate on a Markdown line', () => {
+    const source = '- keep and keep'
+
+    expect(indexOfTextOnLine(source, 1, 'keep', 9)).toBe(source.lastIndexOf('keep'))
+  })
+
+  it('does not match selected prose inside persisted highlight markup', () => {
+    const source = '<mark data-md-reader-color="yellow">w</mark>o<mark data-md-reader-color="yellow">nderfully</mark>'
+
+    expect(indexOfTextOnLine(source, 1, 'o', 16)).toBe(source.indexOf('</mark>o') + '</mark>'.length)
   })
 
   it('returns annotations for the matching code node and renders their pieces', () => {
