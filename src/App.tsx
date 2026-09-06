@@ -137,7 +137,7 @@ export default function App() {
       if (codeParts.length) {
         setAnnotations((current) => {
           const additions = codeParts.flatMap((part) => {
-            const content = part.code?.textContent ?? ''
+            const content = (part.code?.textContent ?? '').replace(/\r?\n$/, '')
             const start = content.indexOf(part.text)
             return start < 0 ? [] : [{ content, start, end: start + part.text.length, color: selectedColor }]
           })
